@@ -1,0 +1,84 @@
+name: Repository Backup to Telegram
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths-ignore:
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for complete backup
+      
+      - name: Create ZIP archive
+        run: |
+          ZIP_NAME="panel-backup-$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA:0:7}.zip"
+          zip -r "$ZIP_NAME" . \
+            -x "*.git/*" \
+            -x "*.github/workflows/*.yml.bak" \
+            -x "*/.DS_Store" \
+            -x "*/build/*" \
+            -x "*/node_modules/*" \
+            -x "*/.dart_tool/*" \
+            -x "*/android/.gradle/*" \
+            -x "*/android/app/build/*" \
+            -x "*/ios/Pods/*" \
+            -x "*/ios/.symlinks/*" \
+            -x "*/windows/flutter/ephemeral/*"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "ZIP_SIZE=$(du -h $ZIP_NAME | cut -f1)" >> $GITHUB_ENV
+      
+      - name: Send backup to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || '8312138474:AAHSLslHtfLEwRM-oKae-YOuxpMEKKJo5Hs' }}
+          TELEGRAM_CHAT_ID: -1003591352604
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+          COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+          COMMIT_HASH=$(git log -1 --pretty=%h)
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          BACKUP_TIME=$(date +"%Y-%m-%d %H:%M:%S UTC")
+          
+          CAPTION="📦 Repository Backup - Panel Admin
+          
+          📁 File: ${{ env.ZIP_NAME }}
+          📊 Size: ${{ env.ZIP_SIZE }}
+          
+          🔀 Branch: $BRANCH_NAME
+          👤 Author: $COMMIT_AUTHOR
+          💬 Commit: $COMMIT_MSG
+          🔖 Hash: $COMMIT_HASH
+          🕐 Time: $BACKUP_TIME
+          
+          🔗 Repository: ${{ github.repository }}
+          🆔 Run ID: ${{ github.run_id }}
+          🔗 Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          curl -F document=@"${{ env.ZIP_NAME }}" \
+            -F caption="$CAPTION" \
+            -F parse_mode=HTML \
+            https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument?chat_id=${TELEGRAM_CHAT_ID}
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f *.zip
+
+
+
+
+
+
+
+
+
+
