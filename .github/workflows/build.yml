@@ -51,14 +51,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Setup Android Signing
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/keystore.jks
-          echo "storeFile=keystore.jks" >> android/key.properties
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+      # Temporarily disabled until proper keystore is configured
+      # - name: Setup Android Signing
+      #   if: github.event_name != 'pull_request'
+      #   run: |
+      #     echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/keystore.jks
+      #     echo "storeFile=keystore.jks" >> android/key.properties
+      #     echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
+      #     echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+      #     echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
 
       - name: Build APK Release
         run: flutter build apk --release --split-per-abi
