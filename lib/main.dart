@@ -71,11 +71,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (data != null && data.text != null && data.text!.isNotEmpty) {
         String config = data.text!.trim();
         
-        // Check if it's a valid V2Ray config
+        // Check if it's a valid config
         if (config.startsWith('vmess://') || 
             config.startsWith('vless://') || 
             config.startsWith('ss://') ||
-            config.startsWith('trojan://')) {
+            config.startsWith('trojan://') ||
+            config.startsWith('http://') ||
+            config.startsWith('https://')) {
           
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -101,7 +103,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Invalid config format. Please copy a valid V2Ray config.'),
+              content: Text('Invalid config format. Please copy a valid config.'),
               backgroundColor: Colors.orange,
             ),
           );
