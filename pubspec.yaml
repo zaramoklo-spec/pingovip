@@ -13,7 +13,7 @@ dependencies:
   cupertino_icons: ^1.0.2
   
   # VPN & Network
-  flutter_v2ray: ^0.0.5
+  flutter_v2ray: ^1.0.10
   
   # State Management
   provider: ^6.1.1
