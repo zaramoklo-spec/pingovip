@@ -49,7 +49,9 @@ android {
         getByName("release") {
             // Use debug signing for now until proper keystore is configured
             signingConfig = signingConfigs.getByName("debug")
+            // Disable minification and resource shrinking for now
             isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
