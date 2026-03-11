@@ -1,10 +1,10 @@
-name: Multi-Platform CI/CD Build
+name: Android CI/CD Build
 
 on:
   push:
-    branches: [main, master, develop, review-and-enhance-code-for-performance-4b31]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, master, develop, review-and-enhance-code-for-performance-4b31]
+    branches: [main, master, develop]
   workflow_dispatch:
 
 jobs:
@@ -39,15 +39,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Cache Android NDK
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/lib/android/sdk/ndk
-          key: ${{ runner.os }}-ndk-27.0.12077973
-          restore-keys: |
-            ${{ runner.os }}-ndk-
-
       - name: Cache Pub Dependencies
         uses: actions/cache@v4
         with:
@@ -61,6 +52,7 @@ jobs:
         run: flutter pub get
 
       - name: Setup Android Signing
+        if: github.event_name != 'pull_request'
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/keystore.jks
           echo "storeFile=keystore.jks" >> android/key.properties
@@ -84,11 +76,11 @@ jobs:
           
           for apk in *.apk; do
             if [[ $apk == *"arm64-v8a"* ]]; then
-              mv "$apk" "app-arm64-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.apk"
+              mv "$apk" "pingo-arm64-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.apk"
             elif [[ $apk == *"armeabi-v7a"* ]]; then
-              mv "$apk" "app-arm32-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.apk"
+              mv "$apk" "pingo-arm32-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.apk"
             elif [[ $apk == *"x86_64"* ]]; then
-              mv "$apk" "app-x64-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.apk"
+              mv "$apk" "pingo-x64-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.apk"
             fi
           done
           
@@ -98,14 +90,14 @@ jobs:
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-android-release-build-${{ github.run_number }}
+          name: pingo-android-release-build-${{ github.run_number }}
           path: |
             build/app/outputs/flutter-apk/*.apk
             build/app/outputs/bundle/release/app-release.aab
           retention-days: 30
 
       - name: Send APK to Telegram
-        if: success()
+        if: success() && github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -119,7 +111,7 @@ jobs:
           for apk in *.apk; do
             APK_SIZE=$(du -h "$apk" | cut -f1)
           
-            CAPTION="🤖 Android APK Build
+            CAPTION="🤖 Pingo VPN Android Build
           
           File: ${apk}
           Size: ${APK_SIZE}
@@ -137,7 +129,7 @@ jobs:
           done
 
       - name: Send failure notification
-        if: failure()
+        if: failure() && github.event_name != 'pull_request'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -149,7 +141,7 @@ jobs:
           curl -X POST https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage \
                -d chat_id=${TELEGRAM_CHAT_ID} \
                -d parse_mode=HTML \
-               -d text="❌ <b>Android Build Failed!</b>
+               -d text="❌ <b>Pingo VPN Android Build Failed!</b>
           
           Build: #${{ github.run_number }}
           Branch: ${BRANCH_NAME}
@@ -158,242 +150,3 @@ jobs:
           Time: ${BUILD_TIME}
           
           <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View Log</a>"
-
-  build-windows:
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Cache Pub Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.LOCALAPPDATA }}\Pub\Cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Windows Release
-        run: flutter build windows --release
-
-      - name: Create Windows Archive
-        shell: pwsh
-        run: |
-          $BUILD_TIME = Get-Date -Format "yyyyMMdd_HHmmss"
-          $BUILD_NUMBER = "${{ github.run_number }}"
-          $COMMIT_SHORT = git rev-parse --short HEAD
-          
-          $RELEASE_DIR = "build\windows\x64\runner\Release"
-          $ARCHIVE_NAME = "app-windows-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.zip"
-          
-          Compress-Archive -Path "$RELEASE_DIR\*" -DestinationPath $ARCHIVE_NAME
-          
-          Write-Output "Windows build archived successfully"
-          Write-Output "Archive: $ARCHIVE_NAME"
-          Write-Output "Size: $((Get-Item $ARCHIVE_NAME).Length / 1MB) MB"
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-windows-release-build-${{ github.run_number }}
-          path: app-windows-*.zip
-          retention-days: 30
-
-      - name: Send Windows build to Telegram
-        if: success()
-        shell: pwsh
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          $COMMIT_MSG = git log -1 --pretty=%B
-          $BRANCH_NAME = "${{ github.ref_name }}"
-          $BUILD_TIME = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-          
-          $ARCHIVE = Get-Item app-windows-*.zip | Select-Object -First 1
-          $FILE_SIZE = "{0:N2} MB" -f ($ARCHIVE.Length / 1MB)
-          
-          $CAPTION = "🪟 Windows Build`n`nFile: $($ARCHIVE.Name)`nSize: $FILE_SIZE`nBuild: #${{ github.run_number }}`nBranch: $BRANCH_NAME`nDeveloper: ${{ github.actor }}`nCommit: $COMMIT_MSG`nTime: $BUILD_TIME"
-          
-          curl.exe -F "document=@$($ARCHIVE.FullName)" `
-                   -F "caption=$CAPTION" `
-                   "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendDocument?chat_id=$env:TELEGRAM_CHAT_ID"
-
-      - name: Send failure notification
-        if: failure()
-        shell: pwsh
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          $COMMIT_MSG = git log -1 --pretty=%B
-          $BRANCH_NAME = "${{ github.ref_name }}"
-          $BUILD_TIME = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-          
-          $MESSAGE = @"
-          ❌ <b>Windows Build Failed!</b>
-          
-          Build: #${{ github.run_number }}
-          Branch: $BRANCH_NAME
-          Developer: ${{ github.actor }}
-          Commit: $COMMIT_MSG
-          Time: $BUILD_TIME
-          
-          <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View Log</a>
-          "@
-          
-          $uri = "https://api.telegram.org/bot$env:TELEGRAM_BOT_TOKEN/sendMessage"
-          $body = @{
-              chat_id = $env:TELEGRAM_CHAT_ID
-              parse_mode = "HTML"
-              text = $MESSAGE
-          }
-          
-          Invoke-RestMethod -Uri $uri -Method Post -Body $body
-
-  build-web:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Cache Pub Dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.pub-cache
-          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pub-
-
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Build Web Release
-        run: flutter build web --release
-
-      - name: Create Web Archive
-        run: |
-          BUILD_TIME=$(date +"%Y%m%d_%H%M%S")
-          BUILD_NUMBER=${{ github.run_number }}
-          COMMIT_SHORT=$(git rev-parse --short HEAD)
-          
-          cd build/web
-          ARCHIVE_NAME="app-web-${BUILD_TIME}-build${BUILD_NUMBER}-${COMMIT_SHORT}.zip"
-          
-          zip -r ../../${ARCHIVE_NAME} . -x "*.DS_Store"
-          
-          cd ../..
-          echo "Web build archived successfully"
-          echo "Archive: ${ARCHIVE_NAME}"
-          ls -lh ${ARCHIVE_NAME}
-
-      - name: Upload Web artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-web-release-build-${{ github.run_number }}
-          path: |
-            app-web-*.zip
-            build/web/
-          retention-days: 30
-
-      - name: Send Web build to Telegram
-        if: success()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S")
-          
-          ARCHIVE=$(ls app-web-*.zip | head -n 1)
-          ARCHIVE_SIZE=$(du -h "$ARCHIVE" | cut -f1)
-          
-          CAPTION="🌐 Web Build
-          
-          File: ${ARCHIVE}
-          Size: ${ARCHIVE_SIZE}
-          Build: #${{ github.run_number }}
-          Branch: ${BRANCH_NAME}
-          Developer: ${{ github.actor }}
-          Commit: ${COMMIT_MSG}
-          Time: ${BUILD_TIME}"
-          
-          curl -F document=@"${ARCHIVE}" \
-               -F caption="${CAPTION}" \
-               https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument?chat_id=${TELEGRAM_CHAT_ID}
-
-      - name: Send failure notification
-        if: failure()
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S")
-          
-          curl -X POST https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage \
-               -d chat_id=${TELEGRAM_CHAT_ID} \
-               -d parse_mode=HTML \
-               -d text="❌ <b>Web Build Failed!</b>
-          
-          Build: #${{ github.run_number }}
-          Branch: ${BRANCH_NAME}
-          Developer: ${{ github.actor }}
-          Commit: ${COMMIT_MSG}
-          Time: ${BUILD_TIME}
-          
-          <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View Log</a>"
-
-  build-completed:
-    runs-on: ubuntu-latest
-    needs: [build-android, build-windows, build-web]
-    if: always()
-
-    steps:
-      - name: Send completion notification
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          STATUS_EMOJI="✅"
-          STATUS_TEXT="All Builds Completed Successfully!"
-          
-          if [[ "${{ needs.build-android.result }}" != "success" ]] || \
-             [[ "${{ needs.build-windows.result }}" != "success" ]] || \
-             [[ "${{ needs.build-web.result }}" != "success" ]]; then
-            STATUS_EMOJI="⚠️"
-            STATUS_TEXT="Some Builds Failed"
-          fi
-          
-          curl -X POST https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage \
-               -d chat_id=${TELEGRAM_CHAT_ID} \
-               -d parse_mode=HTML \
-               -d text="${STATUS_EMOJI} <b>${STATUS_TEXT}</b>
-          
-          Build: #${{ github.run_number }}
-          Platforms: 🤖 Android | 🪟 Windows | 🌐 Web
-          Developer: ${{ github.actor }}
-          
-          📦 Files ready in Artifacts and Telegram
-          🔗 <a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View Build Log</a>"
