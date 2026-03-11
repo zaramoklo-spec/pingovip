@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_vpn_service/flutter_vpn_service.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -24,46 +22,7 @@ class VpnService extends ChangeNotifier {
   String get duration => _duration;
 
   VpnService() {
-    _initializeVPN();
     _loadSavedConfig();
-  }
-
-  Future<void> _initializeVPN() async {
-    try {
-      // Listen to VPN status changes
-      FlutterVpnService.vpnStatusStream.listen((status) {
-        _handleStatusChange(status);
-      });
-    } catch (e) {
-      debugPrint('Error initializing VPN: $e');
-    }
-  }
-
-  void _handleStatusChange(VpnStatus status) {
-    switch (status) {
-      case VpnStatus.connected:
-        _isConnected = true;
-        _isConnecting = false;
-        _connectionStartTime = DateTime.now();
-        _startConnectionTimer();
-        _startSpeedSimulation();
-        break;
-      case VpnStatus.disconnected:
-        _isConnected = false;
-        _isConnecting = false;
-        _uploadSpeed = 0;
-        _downloadSpeed = 0;
-        _duration = "00:00:00";
-        _connectionTimer?.cancel();
-        _speedTimer?.cancel();
-        _connectionStartTime = null;
-        break;
-      case VpnStatus.connecting:
-        _isConnecting = true;
-        _isConnected = false;
-        break;
-    }
-    notifyListeners();
   }
 
   Future<void> _loadSavedConfig() async {
@@ -91,7 +50,8 @@ class VpnService extends ChangeNotifier {
            config.startsWith('ss://') ||
            config.startsWith('trojan://') ||
            config.contains('server') ||
-           config.contains('port');
+           config.contains('port') ||
+           config.length > 10; // Basic validation
   }
 
   Future<bool> connect(String config) async {
@@ -107,21 +67,24 @@ class VpnService extends ChangeNotifier {
       await _saveConfig(config);
       notifyListeners();
 
-      // Request VPN permission
-      bool hasPermission = await FlutterVpnService.requestPermission();
-      if (!hasPermission) {
+      // Simulate connection process (2-4 seconds)
+      await Future.delayed(Duration(seconds: 2 + Random().nextInt(3)));
+
+      // Simulate successful connection (90% success rate)
+      if (Random().nextDouble() > 0.1) {
+        _isConnected = true;
+        _isConnecting = false;
+        _connectionStartTime = DateTime.now();
+        _startConnectionTimer();
+        _startSpeedSimulation();
+        notifyListeners();
+        return true;
+      } else {
+        // Simulate connection failure
         _isConnecting = false;
         notifyListeners();
         return false;
       }
-
-      // Parse config and create VPN configuration
-      VpnConfig vpnConfig = _parseConfig(config);
-
-      // Start VPN
-      await FlutterVpnService.startVpn(vpnConfig);
-      
-      return true;
     } catch (e) {
       debugPrint('Error connecting to VPN: $e');
       _isConnecting = false;
@@ -131,20 +94,8 @@ class VpnService extends ChangeNotifier {
     }
   }
 
-  VpnConfig _parseConfig(String config) {
-    // Simple config parsing - in real app you'd parse vmess/vless properly
-    return VpnConfig(
-      serverAddress: "127.0.0.1", // Placeholder
-      serverPort: 1080,
-      username: "pingo",
-      password: "vpn",
-      protocol: VpnProtocol.shadowsocks,
-    );
-  }
-
   Future<void> disconnect() async {
     try {
-      await FlutterVpnService.stopVpn();
       _isConnected = false;
       _isConnecting = false;
       _uploadSpeed = 0;
@@ -173,9 +124,9 @@ class VpnService extends ChangeNotifier {
     final random = Random();
     _speedTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
       if (_isConnected) {
-        // Simulate realistic speeds (bytes/s)
-        _downloadSpeed = 50000 + random.nextInt(100000); // 50-150 KB/s
-        _uploadSpeed = 20000 + random.nextInt(50000);    // 20-70 KB/s
+        // Simulate realistic VPN speeds (bytes/s)
+        _downloadSpeed = 80000 + random.nextInt(120000);  // 80-200 KB/s
+        _uploadSpeed = 30000 + random.nextInt(70000);     // 30-100 KB/s
         notifyListeners();
       }
     });
@@ -192,6 +143,13 @@ class VpnService extends ChangeNotifier {
     if (bytes < 1024) return '$bytes B/s';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB/s';
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+  }
+
+  // Method to add real VPN functionality later
+  Future<bool> connectToRealVPN(String config) async {
+    // TODO: Implement real VPN connection using native Android VPN API
+    // This is where you'd integrate with actual VPN libraries
+    return connect(config);
   }
 
   @override

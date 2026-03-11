@@ -12,9 +12,6 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.2
   
-  # Lightweight VPN
-  flutter_vpn_service: ^1.0.0
-  
   # State Management
   provider: ^6.1.1
   
