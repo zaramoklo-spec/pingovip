@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_v2ray/flutter_v2ray.dart';
 
 class VpnService extends ChangeNotifier {
-  final FlutterV2ray _v2rayPlugin = FlutterV2ray();
+  late FlutterV2ray _v2rayPlugin;
   
   bool _isConnected = false;
   bool _isConnecting = false;
@@ -24,27 +24,39 @@ class VpnService extends ChangeNotifier {
 
   Future<void> _initializeV2Ray() async {
     try {
-      // Listen to connection status
-      _v2rayPlugin.v2rayStatus.listen((status) {
-        if (status.state == "CONNECTED") {
-          _isConnected = true;
-          _isConnecting = false;
-          _uploadSpeed = status.uploadSpeed.toInt();
-          _downloadSpeed = status.downloadSpeed.toInt();
-          _duration = status.duration;
-          notifyListeners();
-        } else if (status.state == "DISCONNECTED") {
-          _isConnected = false;
-          _isConnecting = false;
-          _uploadSpeed = 0;
-          _downloadSpeed = 0;
-          _duration = "00:00:00";
-          notifyListeners();
-        }
-      });
+      // Initialize V2Ray with status callback
+      _v2rayPlugin = FlutterV2ray(
+        onStatusChanged: (status) {
+          _handleStatusChange(status);
+        },
+      );
     } catch (e) {
       debugPrint('Error initializing V2Ray: $e');
     }
+  }
+
+  void _handleStatusChange(V2RayStatus status) {
+    switch (status.state) {
+      case "CONNECTED":
+        _isConnected = true;
+        _isConnecting = false;
+        _uploadSpeed = status.uploadSpeed?.toInt() ?? 0;
+        _downloadSpeed = status.downloadSpeed?.toInt() ?? 0;
+        _duration = status.duration ?? "00:00:00";
+        break;
+      case "DISCONNECTED":
+        _isConnected = false;
+        _isConnecting = false;
+        _uploadSpeed = 0;
+        _downloadSpeed = 0;
+        _duration = "00:00:00";
+        break;
+      case "CONNECTING":
+        _isConnecting = true;
+        _isConnected = false;
+        break;
+    }
+    notifyListeners();
   }
 
   Future<bool> connect(String config) async {
@@ -55,15 +67,6 @@ class VpnService extends ChangeNotifier {
       _currentConfig = config;
       notifyListeners();
 
-      // Parse and validate config
-      String? remark = await _v2rayPlugin.parseConfig(config);
-      
-      if (remark == null) {
-        _isConnecting = false;
-        notifyListeners();
-        return false;
-      }
-
       // Request VPN permission
       bool? permissionGranted = await _v2rayPlugin.requestPermission();
       
@@ -73,8 +76,11 @@ class VpnService extends ChangeNotifier {
         return false;
       }
 
-      // Connect to VPN
-      await _v2rayPlugin.connect(config);
+      // Start V2Ray service
+      await _v2rayPlugin.startV2Ray(
+        remark: "Pingo VPN",
+        config: config,
+      );
       
       return true;
     } catch (e) {
@@ -88,7 +94,7 @@ class VpnService extends ChangeNotifier {
 
   Future<void> disconnect() async {
     try {
-      await _v2rayPlugin.disconnect();
+      await _v2rayPlugin.stopV2Ray();
       _isConnected = false;
       _isConnecting = false;
       _currentConfig = null;
